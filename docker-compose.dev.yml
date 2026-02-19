@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: mc-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mission_control}
+      POSTGRES_USER: ${POSTGRES_USER:-mc_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mc_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pg_data_dev:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mc_admin} -d ${POSTGRES_DB:-mission_control}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.8
+    container_name: mc-postgrest-dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER:-mc_admin}:${POSTGRES_PASSWORD:-mc_dev_password}@db:5432/${POSTGRES_DB:-mission_control}
+      PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_JWT_SECRET: ${POSTGREST_JWT_SECRET:-super-secret-jwt-key-for-dev-only-change-in-prod}
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:${POSTGREST_PORT:-3001}
+    ports:
+      - "${POSTGREST_PORT:-3001}:3000"
+
+  frontend:
+    container_name: mc-frontend-dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    depends_on:
+      - postgrest
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gmail.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      GATEWAY_URL: http://host.docker.internal:18789
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-google-gemini-cli/gemini-3-flash-preview}
+      POSTGREST_URL: http://postgrest:3000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /home/ibr-ubuntu/.openclaw:/root/.openclaw
+      - ./skills:/skills
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pg_data_dev:

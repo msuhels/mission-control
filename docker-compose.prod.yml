@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: mc-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No port exposed — only accessible within Docker network
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.8
+    container_name: mc-postgrest
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_JWT_SECRET: ${POSTGREST_JWT_SECRET}
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+    # No port exposed — only accessible within Docker network
+
+  frontend:
+    container_name: mc-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    restart: always
+    depends_on:
+      - postgrest
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      GATEWAY_URL: http://host.docker.internal:18789
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN}
+      DEFAULT_MODEL: ${DEFAULT_MODEL}
+      POSTGREST_URL: http://postgrest:3000
+    volumes:
+      - /home/ibr-ubuntu/.openclaw:/root/.openclaw
+      - ./skills:/skills
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pg_data:
