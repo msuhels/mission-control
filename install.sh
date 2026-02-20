@@ -5,7 +5,7 @@
 
 set -e
 
-REPO_URL="https://github.com/openclaw/mission-control.git"
+REPO_URL="https://github.com/msuhels/mission-control.git"
 DEST_DIR="mission-control"
 
 echo "🦅 Starting Mission Control Installation..."
