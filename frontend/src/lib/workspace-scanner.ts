@@ -23,10 +23,10 @@ export function isPathSafe(filePath: string): boolean {
   // Resolve the home directory
   const homeDir = os.homedir();
   const openclawDir = path.join(homeDir, '.openclaw');
-  
+
   // Resolve the full path (this will resolve .. and . components)
   const resolvedPath = path.resolve(filePath);
-  
+
   // Check if the resolved path starts with the openclaw directory
   // This ensures the path is within ~/.openclaw/ and prevents path traversal
   return resolvedPath.startsWith(openclawDir + path.sep) || resolvedPath === openclawDir;
@@ -43,99 +43,98 @@ export function extractDateFromFilename(filename: string): string {
   // Pattern matches DD-MM-YY or DD-MM-YYYY format
   const datePattern = /(\d{2}-\d{2}-\d{2,4})/;
   const match = filename.match(datePattern);
-  
+
   // Return the matched date or fallback to the filename
   return match ? match[1] : filename;
 }
 
 /**
+ * Helper to get all agent workspaces from openclaw.json
+ */
+async function getAgentWorkspaces(): Promise<{ agentId: string; path: string }[]> {
+  const homeDir = os.homedir();
+  const openclawDir = path.join(homeDir, '.openclaw');
+  const configPath = path.join(openclawDir, 'openclaw.json');
+
+  try {
+    const configData = await readFile(configPath, 'utf-8');
+    const config = JSON.parse(configData);
+    const results: { agentId: string; path: string }[] = [];
+
+    if (!config.agents) return [];
+
+    const defaultWorkspace = config.agents.defaults?.workspace;
+    const agentList = config.agents.list || [];
+
+    for (const agent of agentList) {
+      if (!agent.id) continue;
+
+      let workspacePath = agent.workspace || defaultWorkspace;
+      if (!workspacePath) continue;
+
+      // Docker path translation:
+      // If the path in the config looks like a host path (contains /.openclaw/), 
+      // replace the prefix with the container's .openclaw path.
+      if (workspacePath.includes('.openclaw')) {
+        const parts = workspacePath.split(path.sep);
+        const openclawIdx = parts.indexOf('.openclaw');
+        if (openclawIdx !== -1) {
+          // Reconstruct path relative to container's .openclaw
+          workspacePath = path.join(openclawDir, ...parts.slice(openclawIdx + 1));
+        }
+      } else if (!path.isAbsolute(workspacePath)) {
+        // If relative, assume it's relative to .openclaw or home
+        workspacePath = path.resolve(homeDir, workspacePath);
+      }
+
+      results.push({
+        agentId: agent.id,
+        path: workspacePath
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.warn(`Could not read openclaw.json:`, error);
+    return [];
+  }
+}
+
+/**
  * Scans all workspace directories for report or feedback files.
- * Checks both the new multi-agent workspace structure (~/.openclaw/workspaces/)
- * and the legacy single workspace location (~/.openclaw/workspace-work/).
+ * Reads workspace locations from openclaw.json.
  * 
  * @param type - The type of files to scan for ('report' or 'feedback')
  * @returns Array of WorkspaceFile objects with metadata
  */
 export async function scanWorkspaceFiles(type: 'report' | 'feedback'): Promise<WorkspaceFile[]> {
-  const homeDir = os.homedir();
-  const openclawDir = path.join(homeDir, '.openclaw');
   const results: WorkspaceFile[] = [];
+  const workspaces = await getAgentWorkspaces();
 
-  // Check if .openclaw directory exists
-  try {
-    await stat(openclawDir);
-  } catch (error) {
-    // Directory doesn't exist, return empty array
-    console.warn(`OpenClaw directory not found: ${openclawDir}`);
-    return [];
-  }
+  for (const workspace of workspaces) {
+    const typeDir = path.join(workspace.path, type);
 
-  // Scan ~/.openclaw/workspaces/ for multi-agent workspaces
-  const workspacesDir = path.join(openclawDir, 'workspaces');
-  try {
-    const workspaceDirs = await readdir(workspacesDir, { withFileTypes: true });
-    
-    for (const dirent of workspaceDirs) {
-      if (dirent.isDirectory()) {
-        const agentId = dirent.name;
-        const workspaceDir = path.join(workspacesDir, agentId);
-        const typeDir = path.join(workspaceDir, type);
-        
-        try {
-          // Check if report/ or feedback/ subdirectory exists
-          const typeDirStat = await stat(typeDir);
-          if (typeDirStat.isDirectory()) {
-            // List all .md files
-            const files = await readdir(typeDir);
-            const mdFiles = files.filter(file => file.endsWith('.md'));
-            
-            // Build WorkspaceFile objects
-            for (const file of mdFiles) {
-              const filePath = path.join(typeDir, file);
-              results.push({
-                name: file,
-                path: filePath,
-                date: extractDateFromFilename(file),
-                agentId: agentId
-              });
-            }
-          }
-        } catch (error) {
-          // Type directory doesn't exist or can't be read, skip this workspace
-          console.warn(`Could not read ${type} directory for workspace ${agentId}:`, error);
+    try {
+      const typeDirStat = await stat(typeDir);
+      if (typeDirStat.isDirectory()) {
+        const files = await readdir(typeDir);
+        const mdFiles = files.filter(f => f.endsWith('.md'));
+
+        for (const file of mdFiles) {
+          results.push({
+            name: file,
+            path: path.join(typeDir, file),
+            date: extractDateFromFilename(file),
+            agentId: workspace.agentId
+          });
         }
       }
-    }
-  } catch (error) {
-    // Workspaces directory doesn't exist or can't be read
-    console.warn(`Could not read workspaces directory: ${workspacesDir}`, error);
-  }
-
-  // Scan ~/.openclaw/workspace-work/ (legacy location)
-  const legacyWorkspaceDir = path.join(openclawDir, 'workspace-work');
-  try {
-    const legacyTypeDirPath = path.join(legacyWorkspaceDir, type);
-    const legacyTypeDirStat = await stat(legacyTypeDirPath);
-    
-    if (legacyTypeDirStat.isDirectory()) {
-      // List all .md files
-      const files = await readdir(legacyTypeDirPath);
-      const mdFiles = files.filter(file => file.endsWith('.md'));
-      
-      // Build WorkspaceFile objects with "work" as agentId
-      for (const file of mdFiles) {
-        const filePath = path.join(legacyTypeDirPath, file);
-        results.push({
-          name: file,
-          path: filePath,
-          date: extractDateFromFilename(file),
-          agentId: 'work'
-        });
+    } catch (error: any) {
+      // Silently skip non-existent directories for agents
+      if (error.code !== 'ENOENT') {
+        console.warn(`Could not read ${type} directory for agent ${workspace.agentId}:`, error);
       }
     }
-  } catch (error) {
-    // Legacy workspace directory doesn't exist or can't be read
-    console.warn(`Could not read legacy workspace directory: ${legacyWorkspaceDir}`, error);
   }
 
   return results;
