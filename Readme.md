@@ -47,7 +47,7 @@ Mission Control includes a built-in skill installer that bridges the gap between
 Run this command to clone, setup environment variables, and start Mission Control in one go:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/openclaw/mission-control/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/msuhels/mission-control/refs/heads/main/install.sh | bash
 ```
 
 ---

@@ -2,9 +2,9 @@
  * Skill Health Panel — shows Mission Control skill install status for every agent.
  *
  * Displayed on the Agents page. For each agent it shows:
- *  - Whether the SKILL.md file exists in their workspace
- *  - Whether AGENTS.md references the skill
- *  - An "Install" button if either is missing
+ *  - Per-skill install status (tasks, reporting, feedback)
+ *  - Whether SKILL.md file exists + AGENTS.md references the skill
+ *  - An "Install" button if any skill is missing
  *  - An "Install All" bulk action
  */
 
@@ -17,8 +17,6 @@ import {
     Download,
     Loader2,
     ShieldCheck,
-    FileText,
-    BookOpen,
     AlertTriangle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -27,12 +25,20 @@ import { cn } from "@/lib/utils"
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+interface SkillDetail {
+    key: string
+    label: string
+    hasSkillFile: boolean
+    hasAgentMdRef: boolean
+    installed: boolean
+}
+
 interface SkillStatus {
     agentId: string
     agentName: string
     workspace: string | null
-    hasSkillFile: boolean
-    hasAgentMdRef: boolean
+    skills: SkillDetail[]
+    allInstalled: boolean
     installed: boolean
 }
 
@@ -117,7 +123,7 @@ export function SkillHealthPanel() {
     const handleInstallAll = useCallback(async () => {
         if (!data) return
         const missing = data.agents
-            .filter((a) => !a.installed && a.workspace)
+            .filter((a) => !a.allInstalled && a.workspace)
             .map((a) => a.agentId)
         if (!missing.length) return
 
@@ -164,7 +170,7 @@ export function SkillHealthPanel() {
     if (!data || data.agents.length === 0) return null
 
     const missingCount = data.agents.filter(
-        (a) => !a.installed && a.workspace,
+        (a) => !a.allInstalled && a.workspace,
     ).length
     const noWorkspaceCount = data.agents.filter((a) => !a.workspace).length
 
@@ -192,12 +198,12 @@ export function SkillHealthPanel() {
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-foreground">
-                            Mission Control Skill
+                            Mission Control Skills
                         </h3>
                         <p className="text-xs text-muted-foreground">
                             {data.allInstalled
-                                ? "Installed on all agents"
-                                : `${missingCount} agent${missingCount !== 1 ? "s" : ""} missing the skill`}
+                                ? "All skills installed on all agents"
+                                : `${missingCount} agent${missingCount !== 1 ? "s" : ""} missing one or more skills`}
                         </p>
                     </div>
                 </div>
@@ -233,7 +239,7 @@ export function SkillHealthPanel() {
                             key={agent.agentId}
                             className={cn(
                                 "flex items-center justify-between px-5 py-3 transition-colors",
-                                agent.installed
+                                agent.allInstalled
                                     ? "bg-card"
                                     : "bg-muted/20",
                             )}
@@ -243,7 +249,7 @@ export function SkillHealthPanel() {
                                 <div
                                     className={cn(
                                         "flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold shrink-0",
-                                        agent.installed
+                                        agent.allInstalled
                                             ? "bg-status-done-badge-bg text-status-done-badge-fg"
                                             : hasNoWorkspace
                                                 ? "bg-muted text-muted-foreground"
@@ -270,40 +276,31 @@ export function SkillHealthPanel() {
                                 </div>
                             </div>
 
-                            {/* Status indicators */}
+                            {/* Per-skill status indicators */}
                             <div className="flex items-center gap-4">
-                                {!hasNoWorkspace && (
-                                    <>
-                                        {/* SKILL.md status */}
-                                        <div className="flex items-center gap-1.5">
-                                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                            {agent.hasSkillFile ? (
-                                                <CheckCircle2 className="h-3.5 w-3.5 text-status-done" />
-                                            ) : (
-                                                <XCircle className="h-3.5 w-3.5 text-destructive/60" />
-                                            )}
-                                            <span className="text-[10px] text-muted-foreground hidden sm:inline">
-                                                SKILL.md
-                                            </span>
-                                        </div>
-
-                                        {/* AGENTS.md ref status */}
-                                        <div className="flex items-center gap-1.5">
-                                            <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                                            {agent.hasAgentMdRef ? (
-                                                <CheckCircle2 className="h-3.5 w-3.5 text-status-done" />
-                                            ) : (
-                                                <XCircle className="h-3.5 w-3.5 text-destructive/60" />
-                                            )}
-                                            <span className="text-[10px] text-muted-foreground hidden sm:inline">
-                                                AGENTS.md
-                                            </span>
-                                        </div>
-                                    </>
+                                {!hasNoWorkspace && agent.skills && (
+                                    <div className="flex items-center gap-3">
+                                        {agent.skills.map((skill) => (
+                                            <div
+                                                key={skill.key}
+                                                className="flex items-center gap-1"
+                                                title={`${skill.label}: ${skill.installed ? "Installed" : "Missing"}`}
+                                            >
+                                                {skill.installed ? (
+                                                    <CheckCircle2 className="h-3.5 w-3.5 text-status-done" />
+                                                ) : (
+                                                    <XCircle className="h-3.5 w-3.5 text-destructive/60" />
+                                                )}
+                                                <span className="text-[10px] text-muted-foreground hidden sm:inline">
+                                                    {skill.label}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
 
                                 {/* Action button */}
-                                {agent.installed ? (
+                                {agent.allInstalled ? (
                                     <span className="inline-flex items-center gap-1.5 rounded-full bg-status-done-badge-bg px-3 py-1 text-[10px] font-bold text-status-done-badge-fg">
                                         <CheckCircle2 className="h-3 w-3" />
                                         Installed

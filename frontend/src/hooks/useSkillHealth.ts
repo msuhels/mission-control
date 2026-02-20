@@ -106,8 +106,8 @@ export function useSkillHealth() {
                         .map((a) => a.agentName)
                         .join(", ")
 
-                    toast.warning("Agents missing Mission Control skill", {
-                        description: `${missingAgents.length} agent${missingAgents.length !== 1 ? "s" : ""} don't have the task management skill: ${names}`,
+                    toast.warning("Agents missing Mission Control skills", {
+                        description: `${missingAgents.length} agent${missingAgents.length !== 1 ? "s" : ""} are missing one or more Mission Control skills: ${names}`,
                         duration: 12000,
                         action: {
                             label: "Fix All",

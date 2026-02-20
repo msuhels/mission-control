@@ -263,19 +263,45 @@ curl -s "http://localhost:3001/requirements?is_active=eq.true" | jq .
 
 ## 5. Workflow Guidance
 
-The following are **suggestions**, not rules. Use your judgement.
+### Task Decomposition — MANDATORY
 
-### When you receive a requirement or complex request
+**You MUST always decompose a user request into multiple, granular tasks.** Never create a single task for an entire request. Each task should represent one distinct, actionable step.
 
-Consider whether it benefits from being decomposed into smaller tasks.
-A good decomposition makes progress visible and enables parallel work.
+Think of it like this: if a human manager gave you the request, what would your to-do list look like? Each item on that list is a separate task.
 
 ```
-Requirement → Task 1 (research / analysis)
-            → Task 2 (implementation)
-            → Task 3 (testing / validation)
-            → Task 4 (documentation / cleanup)
+User request: "Search top post in AGI subreddit, find the top comment, and comment on it"
+
+✅ CORRECT decomposition:
+  Requirement → Task 1: Open Reddit and navigate to r/AGI subreddit
+              → Task 2: Find the top post in the subreddit
+              → Task 3: Identify the top comment on that post
+              → Task 4: Compose and post a reply to the top comment
+
+❌ WRONG — single monolithic task:
+  Requirement → Task 1: Search top post in AGI subreddit and comment on it
 ```
+
+**Rules for decomposition:**
+
+1. **Each task = one action.** If a task title contains "and", it's probably two tasks.
+2. **Tasks should be sequential or parallel.** Order them logically via `sort_order` or creation order.
+3. **Be specific.** "Research the topic" is too vague. "Find top 5 posts in r/AGI sorted by upvotes" is good.
+4. **Keep tasks small.** A task that takes more than a few minutes of focused work should be split further.
+
+### Tasks vs. Implicit Actions
+
+Some actions are part of your workflow but should **NOT** be created as tasks:
+
+| Action | Create a task? | Why |
+|--------|---------------|-----|
+| Navigating to a website | ✅ Yes | Distinct action step |
+| Writing code | ✅ Yes | Core work |
+| Generating a **report** | ❌ No | Implicit — handled by the Reporting skill |
+| Writing **feedback** | ❌ No | Implicit — handled by the Feedback skill |
+| Updating task status | ❌ No | Meta-action, not real work |
+
+> **Reporting and feedback are automatic responsibilities.** You do them after completing a requirement, but you never create tasks for them. They are part of your operating protocol, not the user's request.
 
 ### Typical task lifecycle
 

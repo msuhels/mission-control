@@ -2,13 +2,13 @@
  * Skills health check & installer API route.
  *
  * GET  — For each agent, reports whether its workspace contains the
- *        Mission Control SKILL.md **and** whether its AGENTS.md references
- *        the skill.
+ *        Mission Control SKILL.md files **and** whether its AGENTS.md
+ *        references each skill.
  *
- * POST — Installs the skill for one or more agents.
+ * POST — Installs the skills for one or more agents.
  *        Body: { agentIds: string[] }
- *        - Copies SKILL.md into <workspace>/skills/mission-control-tasks/
- *        - Appends a reference section to AGENTS.md (or creates it)
+ *        - Copies each SKILL.md into <workspace>/skills/<skill-dir>/
+ *        - Appends reference sections to AGENTS.md (or creates it)
  */
 
 import fs from "node:fs"
@@ -33,44 +33,133 @@ interface OpenClawConfig {
     }
 }
 
+interface SkillDetail {
+    key: string
+    label: string
+    hasSkillFile: boolean
+    hasAgentMdRef: boolean
+    installed: boolean
+}
+
 interface SkillStatus {
     agentId: string
     agentName: string
     workspace: string | null
+    skills: SkillDetail[]
+    allInstalled: boolean
+    // Legacy compat — true if ALL skills are installed
     hasSkillFile: boolean
     hasAgentMdRef: boolean
     installed: boolean
 }
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                          */
+/*  Skill definitions                                                  */
 /* ------------------------------------------------------------------ */
 
-const SKILL_DIR_NAME = "skills/mission-control-tasks"
+interface SkillDef {
+    key: string
+    dirName: string
+    refMarker: string
+    label: string
+    refBlock: string
+}
+
+const SKILLS: SkillDef[] = [
+    {
+        key: "tasks",
+        dirName: "mission-control-tasks",
+        refMarker: "mission-control-tasks",
+        label: "Task Management",
+        refBlock: [
+            "",
+            "## Mission Control — Task Management",
+            "",
+            "This agent has access to the **Mission Control Task Management** skill.",
+            "Read `skills/mission-control-tasks/SKILL.md` for full details on how to",
+            "create, update, and track tasks via the PostgREST API.",
+            "",
+            "Key capabilities:",
+            "- Create and manage tasks at `http://localhost:3001/tasks`",
+            "- Log progress via `task_steps`",
+            "- Request human reviews via `task_reviews`",
+            "- Use your own judgement about when to decompose requirements into tasks",
+            "",
+        ].join("\n"),
+    },
+    {
+        key: "reporting",
+        dirName: "mission-control-reporting",
+        refMarker: "mission-control-reporting",
+        label: "Reporting",
+        refBlock: [
+            "",
+            "## Mission Control — Reporting",
+            "",
+            "This agent has access to the **Mission Control Reporting** skill.",
+            "Read `skills/mission-control-reporting/SKILL.md` for full details.",
+            "",
+            "Key capabilities:",
+            "- Generate a completion report when all tasks under a requirement are `done`",
+            "- Reports are written to `~/.openclaw/workspaces/<agent-id>/report/<DD-MM-YY>.md`",
+            "- If a report file already exists for the day, append to it",
+            "- Reports are **mandatory** after completing a requirement",
+            "",
+        ].join("\n"),
+    },
+    {
+        key: "feedback",
+        dirName: "mission-control-feedback",
+        refMarker: "mission-control-feedback",
+        label: "Feedback",
+        refBlock: [
+            "",
+            "## Mission Control — Feedback",
+            "",
+            "This agent has access to the **Mission Control Feedback** skill.",
+            "Read `skills/mission-control-feedback/SKILL.md` for full details.",
+            "",
+            "Key capabilities:",
+            "- Self-evaluate after completing a requirement's tasks",
+            "- Log inaccuracies, improvement areas, and lessons learned",
+            "- Feedback is written to `~/.openclaw/workspaces/<agent-id>/feedback/<DD-MM-YY>.md`",
+            "- Feedback is **optional** — only write if there is something meaningful to improve",
+            "",
+        ].join("\n"),
+    },
+]
+
 const SKILL_FILE = "SKILL.md"
 const AGENTS_MD = "AGENTS.md"
-const SKILL_REF_MARKER = "mission-control-tasks"
 
-// Canonical source SKILL.md — search in multiple locations
-// (project root for local dev, Docker mount, relative to cwd)
-function findCanonicalSkillPath(): string | null {
+/* ------------------------------------------------------------------ */
+/*  Canonical skill source lookup                                      */
+/* ------------------------------------------------------------------ */
+
+function findCanonicalSkillPath(dirName: string): string | null {
     const candidates = [
         // Docker: mounted via compose volume at /skills
-        path.join("/skills", "mission-control-tasks", SKILL_FILE),
+        path.join("/skills", dirName, SKILL_FILE),
         // Local dev: project root is one level above frontend/
-        path.join(process.cwd(), "..", "skills", "mission-control-tasks", SKILL_FILE),
+        path.join(process.cwd(), "..", "skills", dirName, SKILL_FILE),
         // Fallback: relative to cwd
-        path.join(process.cwd(), "skills", "mission-control-tasks", SKILL_FILE),
+        path.join(process.cwd(), "skills", dirName, SKILL_FILE),
         // Absolute path on host (if mounted same)
-        path.join("/home/ibr-ubuntu/abhishek_resources/projects/company_projects/mission-control/skills", "mission-control-tasks", SKILL_FILE),
+        path.join(
+            "/home/ibr-ubuntu/abhishek_resources/projects/company_projects/mission-control/skills",
+            dirName,
+            SKILL_FILE,
+        ),
     ]
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) return candidate
     }
-    console.error("[findCanonicalSkillPath] No candidate found. Checked:", candidates)
+    console.error(
+        `[findCanonicalSkillPath] No candidate found for ${dirName}. Checked:`,
+        candidates,
+    )
     return null
 }
-
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -102,8 +191,14 @@ function resolveWorkspace(
         const markerIndex = ws.indexOf(openClawMarker)
         if (markerIndex !== -1) {
             // Reconstruct path inside container: os.homedir() is /root
-            const relativeFromOpenClaw = ws.slice(markerIndex + openClawMarker.length) // "/workspaces/..."
-            const mapped = path.join(os.homedir(), openClawMarker, relativeFromOpenClaw)
+            const relativeFromOpenClaw = ws.slice(
+                markerIndex + openClawMarker.length,
+            ) // "/workspaces/..."
+            const mapped = path.join(
+                os.homedir(),
+                openClawMarker,
+                relativeFromOpenClaw,
+            )
             if (fs.existsSync(mapped)) {
                 return mapped
             }
@@ -113,69 +208,73 @@ function resolveWorkspace(
     return ws
 }
 
-function checkSkillInstalled(workspace: string): {
-    hasSkillFile: boolean
-    hasAgentMdRef: boolean
+function checkSkillsInstalled(workspace: string): {
+    skills: SkillDetail[]
+    allInstalled: boolean
 } {
-    const skillPath = path.join(workspace, SKILL_DIR_NAME, SKILL_FILE)
-    const hasSkillFile = fs.existsSync(skillPath)
+    const skills: SkillDetail[] = SKILLS.map((def) => {
+        const skillPath = path.join(
+            workspace,
+            "skills",
+            def.dirName,
+            SKILL_FILE,
+        )
+        const hasSkillFile = fs.existsSync(skillPath)
 
-    let hasAgentMdRef = false
-    const agentsMdPath = path.join(workspace, AGENTS_MD)
-    if (fs.existsSync(agentsMdPath)) {
-        try {
-            const content = fs.readFileSync(agentsMdPath, "utf-8")
-            hasAgentMdRef = content.includes(SKILL_REF_MARKER)
-        } catch {
-            // ignore read errors
+        let hasAgentMdRef = false
+        const agentsMdPath = path.join(workspace, AGENTS_MD)
+        if (fs.existsSync(agentsMdPath)) {
+            try {
+                const content = fs.readFileSync(agentsMdPath, "utf-8")
+                hasAgentMdRef = content.includes(def.refMarker)
+            } catch {
+                // ignore read errors
+            }
         }
-    }
 
-    return { hasSkillFile, hasAgentMdRef }
+        return {
+            key: def.key,
+            label: def.label,
+            hasSkillFile,
+            hasAgentMdRef,
+            installed: hasSkillFile && hasAgentMdRef,
+        }
+    })
+
+    return {
+        skills,
+        allInstalled: skills.every((s) => s.installed),
+    }
 }
 
-function installSkill(workspace: string): void {
-    // 1. Copy SKILL.md
-    const targetDir = path.join(workspace, SKILL_DIR_NAME)
-    fs.mkdirSync(targetDir, { recursive: true })
+function installSkills(workspace: string): void {
+    for (const def of SKILLS) {
+        // 1. Copy SKILL.md
+        const targetDir = path.join(workspace, "skills", def.dirName)
+        fs.mkdirSync(targetDir, { recursive: true })
 
-    const canonicalPath = findCanonicalSkillPath()
-    const targetPath = path.join(targetDir, SKILL_FILE)
-    if (canonicalPath) {
-        fs.copyFileSync(canonicalPath, targetPath)
-    } else {
-        throw new Error(
-            "Canonical SKILL.md not found. Ensure skills/mission-control-tasks/SKILL.md exists in the project root.",
-        )
-    }
-
-    // 2. Add reference to AGENTS.md
-    const agentsMdPath = path.join(workspace, AGENTS_MD)
-    const refBlock = [
-        "",
-        "## Mission Control — Task Management",
-        "",
-        "This agent has access to the **Mission Control Task Management** skill.",
-        "Read `skills/mission-control-tasks/SKILL.md` for full details on how to",
-        "create, update, and track tasks via the PostgREST API.",
-        "",
-        "Key capabilities:",
-        "- Create and manage tasks at `http://localhost:3001/tasks`",
-        "- Log progress via `task_steps`",
-        "- Request human reviews via `task_reviews`",
-        "- Use your own judgement about when to decompose requirements into tasks",
-        "",
-    ].join("\n")
-
-    if (fs.existsSync(agentsMdPath)) {
-        const existing = fs.readFileSync(agentsMdPath, "utf-8")
-        if (!existing.includes(SKILL_REF_MARKER)) {
-            fs.appendFileSync(agentsMdPath, refBlock)
+        const canonicalPath = findCanonicalSkillPath(def.dirName)
+        const targetPath = path.join(targetDir, SKILL_FILE)
+        if (canonicalPath) {
+            fs.copyFileSync(canonicalPath, targetPath)
+        } else {
+            throw new Error(
+                `Canonical SKILL.md not found for ${def.dirName}. Ensure skills/${def.dirName}/SKILL.md exists in the project root.`,
+            )
         }
-    } else {
-        // Create a minimal AGENTS.md with the reference
-        const header = `# AGENTS.md\n\nWorkspace configuration and skill references.\n`
-        fs.writeFileSync(agentsMdPath, header + refBlock)
+
+        // 2. Add reference to AGENTS.md (if not already present)
+        const agentsMdPath = path.join(workspace, AGENTS_MD)
+        if (fs.existsSync(agentsMdPath)) {
+            const existing = fs.readFileSync(agentsMdPath, "utf-8")
+            if (!existing.includes(def.refMarker)) {
+                fs.appendFileSync(agentsMdPath, def.refBlock)
+            }
+        } else {
+            // Create a minimal AGENTS.md with the first reference
+            const header = `# AGENTS.md\n\nWorkspace configuration and skill references.\n`
+            fs.writeFileSync(agentsMdPath, header + def.refBlock)
+        }
     }
 }
 
@@ -193,33 +292,50 @@ export async function GET(): Promise<NextResponse> {
             .map((entry) => {
                 const workspace = resolveWorkspace(entry, config.agents)
                 if (!workspace || !fs.existsSync(workspace)) {
+                    const emptySkills: SkillDetail[] = SKILLS.map((def) => ({
+                        key: def.key,
+                        label: def.label,
+                        hasSkillFile: false,
+                        hasAgentMdRef: false,
+                        installed: false,
+                    }))
                     return {
                         agentId: entry.id,
                         agentName: entry.name || entry.id,
                         workspace,
+                        skills: emptySkills,
+                        allInstalled: false,
                         hasSkillFile: false,
                         hasAgentMdRef: false,
                         installed: false,
                     }
                 }
 
-                const { hasSkillFile, hasAgentMdRef } =
-                    checkSkillInstalled(workspace)
+                const { skills, allInstalled } =
+                    checkSkillsInstalled(workspace)
 
                 return {
                     agentId: entry.id,
                     agentName: entry.name || entry.id,
                     workspace,
-                    hasSkillFile,
-                    hasAgentMdRef,
-                    installed: hasSkillFile && hasAgentMdRef,
+                    skills,
+                    allInstalled,
+                    // Legacy compat: true only if ALL skills are installed
+                    hasSkillFile: skills.every((s) => s.hasSkillFile),
+                    hasAgentMdRef: skills.every((s) => s.hasAgentMdRef),
+                    installed: allInstalled,
                 }
             })
 
+        // Check that all canonical skill sources exist
+        const canonicalSkillsExist = SKILLS.every(
+            (def) => findCanonicalSkillPath(def.dirName) !== null,
+        )
+
         return NextResponse.json({
             agents: statuses,
-            allInstalled: statuses.every((s) => s.installed),
-            canonicalSkillExists: findCanonicalSkillPath() !== null,
+            allInstalled: statuses.every((s) => s.allInstalled),
+            canonicalSkillExists: canonicalSkillsExist,
         })
     } catch (err) {
         const message =
@@ -230,7 +346,7 @@ export async function GET(): Promise<NextResponse> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  POST — install skill for specified agents                          */
+/*  POST — install skills for specified agents                         */
 /* ------------------------------------------------------------------ */
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -245,10 +361,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             )
         }
 
-        if (!findCanonicalSkillPath()) {
+        // Check all canonical sources exist
+        const missingCanonical = SKILLS.filter(
+            (def) => !findCanonicalSkillPath(def.dirName),
+        )
+        if (missingCanonical.length > 0) {
             return NextResponse.json(
                 {
-                    error: "Canonical SKILL.md not found. Ensure skills/mission-control-tasks/SKILL.md exists in the project root.",
+                    error: `Canonical SKILL.md not found for: ${missingCanonical.map((s) => s.dirName).join(", ")}. Ensure all skill files exist in the project root.`,
                 },
                 { status: 500 },
             )
@@ -295,7 +415,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             }
 
             try {
-                installSkill(workspace)
+                installSkills(workspace)
                 results.push({ agentId, success: true })
             } catch (installErr) {
                 results.push({
