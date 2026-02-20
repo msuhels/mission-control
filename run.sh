@@ -20,6 +20,23 @@ else
     echo "⚠️ Warning: ~/.openclaw/openclaw.json not found."
 fi
 
+# 1b. Ensure gateway bind is set to "lan" (Docker can't reach "loopback")
+echo "🌐 Checking gateway bind setting..."
+if [ -f "$HOME/.openclaw/openclaw.json" ]; then
+    CURRENT_BIND=$(grep -oP '"bind":\s*"\K[^"]+' "$HOME/.openclaw/openclaw.json" | head -n 1)
+    if [ "$CURRENT_BIND" = "loopback" ]; then
+        echo "🔄 Updating gateway bind from 'loopback' to 'lan' for Docker connectivity..."
+        sed -i 's/"bind":\s*"loopback"/"bind": "lan"/' "$HOME/.openclaw/openclaw.json"
+        echo "🔄 Restarting OpenClaw gateway to apply bind change..."
+        openclaw gateway restart 2>/dev/null || echo "⚠️ Could not restart gateway. Please run: openclaw gateway restart"
+        echo "✅ Gateway bind updated to 'lan'."
+    elif [ "$CURRENT_BIND" = "lan" ]; then
+        echo "✅ Gateway bind already set to 'lan'."
+    else
+        echo "ℹ️ Gateway bind is set to '$CURRENT_BIND' (not modifying)."
+    fi
+fi
+
 # 2. Setup .env.local if it doesn't exist
 if [ ! -f ".env.local" ]; then
     echo "📄 Creating .env.local from defaults..."
