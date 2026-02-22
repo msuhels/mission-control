@@ -56,7 +56,7 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
-      - /home/ibr-ubuntu/.openclaw:/root/.openclaw
+      - ~/.openclaw:/root/.openclaw
       - ./skills:/skills
     extra_hosts:
       - "host.docker.internal:host-gateway"

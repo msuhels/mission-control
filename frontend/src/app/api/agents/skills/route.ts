@@ -137,20 +137,21 @@ const AGENTS_MD = "AGENTS.md"
 /* ------------------------------------------------------------------ */
 
 function findCanonicalSkillPath(dirName: string): string | null {
+    // @ts-ignore - process is global in Node
+    const env = typeof process !== "undefined" ? process.env : {}
+    const currentDir = path.resolve(".")
+
     const candidates = [
-        // Docker: mounted via compose volume at /skills
+        // 1. Docker: mounted via compose volume at /skills
         path.join("/skills", dirName, SKILL_FILE),
-        // Local dev: project root is one level above frontend/
-        path.join(process.cwd(), "..", "skills", dirName, SKILL_FILE),
-        // Fallback: relative to cwd
-        path.join(process.cwd(), "skills", dirName, SKILL_FILE),
-        // Absolute path on host (if mounted same)
-        path.join(
-            "/home/ibr-ubuntu/abhishek_resources/projects/company_projects/mission-control/skills",
-            dirName,
-            SKILL_FILE,
-        ),
-    ]
+        // 2. Environment variable override
+        process.env.SKILLS_PATH ? path.join(process.env.SKILLS_PATH, dirName, SKILL_FILE) : null,
+        // 3. Local dev: project root is one level above frontend/
+        path.join(currentDir, "..", "skills", dirName, SKILL_FILE),
+        // 4. Fallback: relative to currentDir (if run from project root)
+        path.join(currentDir, "skills", dirName, SKILL_FILE),
+    ].filter((p): p is string => p !== null)
+
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) return candidate
     }
@@ -166,7 +167,15 @@ function findCanonicalSkillPath(dirName: string): string | null {
 /* ------------------------------------------------------------------ */
 
 function readConfig(): OpenClawConfig {
-    const configPath = path.join(os.homedir(), ".openclaw", "openclaw.json")
+    const defaultPath = path.join(os.homedir(), ".openclaw", "openclaw.json")
+    const configPath = process.env.OPENCLAW_CONFIG_PATH || defaultPath
+
+    if (!fs.existsSync(configPath)) {
+        throw new Error(
+            `OpenClaw config not found at ${configPath}. If running in Docker, ensure your host ~/.openclaw directory is mounted to ${os.homedir()}/.openclaw in the container.`,
+        )
+    }
+
     const raw = fs.readFileSync(configPath, "utf-8")
     return JSON.parse(raw)
 }
@@ -185,7 +194,7 @@ function resolveWorkspace(
 
     // Docker path remapping:
     // If we're inside the container, workspaces might be absolute paths from the host
-    // (e.g. /home/ibr-ubuntu/.openclaw/workspaces/...) but mounted at /root/.openclaw/...
+    // (e.g. ~/.openclaw/workspaces/...) but mounted at /root/.openclaw/...
     if (!fs.existsSync(ws)) {
         const openClawMarker = ".openclaw"
         const markerIndex = ws.indexOf(openClawMarker)

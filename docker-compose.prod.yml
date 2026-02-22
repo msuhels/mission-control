@@ -51,7 +51,7 @@ services:
       DEFAULT_MODEL: ${DEFAULT_MODEL}
       POSTGREST_URL: http://postgrest:3000
     volumes:
-      - /home/ibr-ubuntu/.openclaw:/root/.openclaw
+      - ~/.openclaw:/root/.openclaw
       - ./skills:/skills
     extra_hosts:
       - "host.docker.internal:host-gateway"

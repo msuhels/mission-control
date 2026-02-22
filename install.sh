@@ -10,6 +10,71 @@ DEST_DIR="mission-control"
 
 echo "🦅 Starting Mission Control Installation..."
 
+# --- 🔍 Dependency Checks ---
+echo "⚙️ Checking for required tools..."
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Detect Package Manager
+if command_exists apt-get; then
+    PKG_UPDATE="sudo apt-get update"
+    PKG_INSTALL="sudo apt-get install -y"
+elif command_exists dnf; then
+    PKG_UPDATE="sudo dnf check-update"
+    PKG_INSTALL="sudo dnf install -y"
+fi
+
+# 1. Ensure curl is present
+if ! command_exists curl; then
+    echo "📥 curl not found. Installing..."
+    $PKG_UPDATE && $PKG_INSTALL curl
+fi
+
+# 2. Git
+if ! command_exists git; then
+    echo "📥 Git not found. Installing..."
+    $PKG_INSTALL git
+else
+    echo "✅ Git is already installed."
+fi
+
+# 3. Docker
+if ! command_exists docker; then
+    echo "🐳 Docker not found. Installing..."
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    echo "✅ Docker installed."
+else
+    echo "✅ Docker is already installed."
+fi
+
+# 4. Node.js
+if ! command_exists node; then
+    echo "🟢 Node.js not found. Installing Node.js (v20)..."
+    if command_exists apt-get; then
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    elif command_exists dnf; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+        sudo dnf install -y nodejs
+    fi
+    echo "✅ Node.js installed."
+else
+    echo "✅ Node.js is already installed ($(node -v))."
+fi
+
+# 5. OpenSSL
+if ! command_exists openssl; then
+    echo "🔐 OpenSSL not found. Installing..."
+    $PKG_INSTALL openssl
+else
+    echo "✅ OpenSSL is already installed."
+fi
+
+# --- 🚀 Installation Steps ---
+
 # 1. Clone the repository
 if [ ! -d "$DEST_DIR" ]; then
     echo "📂 Cloning Mission Control repository..."
