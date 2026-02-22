@@ -1,7 +1,5 @@
 # 🦅 OpenClaw Mission Control
 
-[![Discord Server](https://img.shields.io)](https://discord.gg/4fcYGQ7G)
-
 Mission Control is the central orchestration and monitoring dashboard for **OpenClaw** agents. It provides a premium "Human-in-the-Loop" interface to manage agent tasks, monitor execution logs in real-time, and handle manual review requests.
 
 ### 🚀 One-Click Installation
@@ -90,6 +88,8 @@ The API is served via PostgREST and is accessible through the frontend proxy:
 -   `GET /api/task_steps?task_id=eq.{id}`: Get action logs for a task.
 -   `GET /api/task_reviews`: View pending review requests.
 
+---
+Join My Discord Server : [![demo](https://img.shields.io/discord/1474355840822542468?logo=discord)](https://discord.gg/4fcYGQ7G)
 ---
 
 Built with ❤️ for the OpenClaw Ecosystem.
