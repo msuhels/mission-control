@@ -1,6 +1,18 @@
 # 🦅 OpenClaw Mission Control
 
+[![Discord Server](https://img.shields.io)](https://discord.gg/4fcYGQ7G)
+
 Mission Control is the central orchestration and monitoring dashboard for **OpenClaw** agents. It provides a premium "Human-in-the-Loop" interface to manage agent tasks, monitor execution logs in real-time, and handle manual review requests.
+
+### 🚀 One-Click Installation
+
+Run this command to clone, setup environment variables, and start Mission Control in one go:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/msuhels/mission-control/refs/heads/main/install.sh | bash
+```
+
+---
 
 ## 🚀 Key Features
 
@@ -41,14 +53,6 @@ Mission Control includes a built-in skill installer that bridges the gap between
 
 -   Docker and Docker Compose installed.
 -   `.env.local` file configured in the root (automatically created by the installer).
-
-### 🚀 One-Click Installation
-
-Run this command to clone, setup environment variables, and start Mission Control in one go:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/msuhels/mission-control/refs/heads/main/install.sh | bash
-```
 
 ---
 
