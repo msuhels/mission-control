@@ -113,7 +113,20 @@ if [ -f "$HOME/.openclaw/openclaw.json" ]; then
     fi
 fi
 
-# 3. Setup .env.local
+# 3. Prompt for configuration (with defaults)
+echo ""
+echo "📝 Configuration Setup:"
+read -p "📧 Enter Admin Email (default: admin@gmail.com): " USER_ADMIN_EMAIL </dev/tty
+ADMIN_EMAIL=${USER_ADMIN_EMAIL:-admin@gmail.com}
+
+read -p "🔐 Enter Admin Password (default: admin123): " USER_ADMIN_PASSWORD </dev/tty
+ADMIN_PASSWORD=${USER_ADMIN_PASSWORD:-admin123}
+
+read -p "🤖 Enter Default Model (default: google-gemini-cli/gemini-3-flash-preview): " USER_DEFAULT_MODEL </dev/tty
+DEFAULT_MODEL=${USER_DEFAULT_MODEL:-google-gemini-cli/gemini-3-flash-preview}
+echo ""
+
+# 4. Setup .env.local
 if [ ! -f ".env.local" ]; then
     echo "📄 Generating .env.local..."
     cat > .env.local <<EOF
@@ -128,20 +141,32 @@ POSTGREST_JWT_SECRET=$(openssl rand -base64 32)
 
 # Frontend (Next.js)
 FRONTEND_PORT=3000
-ADMIN_EMAIL=admin@gmail.com
-ADMIN_PASSWORD=admin123
+ADMIN_EMAIL=$ADMIN_EMAIL
+ADMIN_PASSWORD=$ADMIN_PASSWORD
 GATEWAY_URL=http://host.docker.internal:18789
 GATEWAY_TOKEN=$TOKEN
-DEFAULT_MODEL=google-gemini-cli/gemini-2.0-flash-exp
+DEFAULT_MODEL=$DEFAULT_MODEL
 EOF
 else
-    echo "ℹ️ .env.local already exists. Updating GATEWAY_TOKEN..."
-    if [ -n "$TOKEN" ]; then
-        if grep -q "GATEWAY_TOKEN=" .env.local; then
-            sed -i "s|GATEWAY_TOKEN=.*|GATEWAY_TOKEN=$TOKEN|" .env.local
+    echo "ℹ️ .env.local already exists. Updating configuration..."
+    
+    # helper function to update or append env var
+    update_env_var() {
+        local var_name=$1
+        local var_value=$2
+        if grep -q "^${var_name}=" .env.local; then
+            sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" .env.local
         else
-            echo "GATEWAY_TOKEN=$TOKEN" >> .env.local
+            echo "${var_name}=${var_value}" >> .env.local
         fi
+    }
+
+    update_env_var "ADMIN_EMAIL" "$ADMIN_EMAIL"
+    update_env_var "ADMIN_PASSWORD" "$ADMIN_PASSWORD"
+    update_env_var "DEFAULT_MODEL" "$DEFAULT_MODEL"
+    
+    if [ -n "$TOKEN" ]; then
+        update_env_var "GATEWAY_TOKEN" "$TOKEN"
     fi
 fi
 

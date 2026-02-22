@@ -22,8 +22,7 @@ services:
     container_name: mc-postgrest
     restart: always
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     environment:
       PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       PGRST_DB_SCHEMAS: api
